@@ -1,0 +1,282 @@
+---
+title: "Citi Bike Data Analysis"
+author: 'Akram Nour'
+date: "2023-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+data <- read.csv("citibike.csv")
+```
+
+
+```{r}
+
+citibike <- data[sample(nrow(data), size=10000), ]
+
+citibike$date <- citibike$starttime
+citibike$date <- as.Date(citibike$date)
+citibike$year <- substr(citibike$starttime, 1, 4)
+citibike <- subset(citibike, select = -c(stoptime,customer_plan,bikeid,start_station_id,end_station_id,start_station_name,end_station_name))
+
+# Moving the date and year column to the beginning of the dataframe
+citibike <- citibike[, c("year", names(citibike)[-11])]
+citibike <- citibike[, c("date", names(citibike)[-11])]
+
+# Setting up the groups of bike users by male/female subscribers and unknown customers
+citibike$Subscriber <- ifelse(citibike$gender == "male" & citibike$usertype == "Subscriber", "Male Subscribers",
+                ifelse(citibike$gender == "female" & citibike$usertype == "Subscriber", "Female Subscribers",
+                       ifelse(citibike$usertype == "Customer", "Regular Customers",
+                              "Other")))
+
+citibike <- subset(citibike, select = -c(usertype))
+
+# Moving the Subscriber column to the beginning of the dataframe
+citibike <- citibike[, c("Subscriber", names(citibike)[-11])]
+
+
+# Change birthdate to represent the age of the rider
+citibike$year <- as.numeric(citibike$year)
+citibike$birth_year <- as.numeric(citibike$birth_year)
+
+citibike$age <- citibike$year - citibike$birth_year
+citibike <- subset(citibike, select = -c(birth_year))
+
+#removing outliers and NA values
+citibike <- filter(citibike, citibike$tripduration < 4000)
+citibike <- filter(citibike, citibike$gender != "unknown")
+citibike <- na.omit(citibike)
+citibike <- filter(citibike, citibike$age < 99)
+
+# converting trip duration to minutes
+citibike$tripduration <- citibike$tripduration / 60
+
+```
+
+```{r}
+theme_set(
+  theme_classic() +
+    theme(legend.position = "top")
+  )
+
+help(boxplot)
+
+ggplot(citibike, aes(x=Subscriber, y=tripduration)) + 
+  geom_boxplot(outlier.colour="#223570", outlier.shape=5,
+                outlier.size=4)
+
+citibike$agegroup <- ifelse(citibike$age >= 16 & citibike$age <= 20, "16 - 20",
+                         ifelse(citibike$age >= 21 & citibike$age <= 25, "21 - 25",
+                              ifelse(citibike$age >= 26 & citibike$age <= 35, "25 - 35",
+                                  ifelse(citibike$age >= 36 & citibike$age <= 50, "35 - 50",
+                                       ifelse(citibike$age >= 51 & citibike$age <= 60, "50 - 60",
+                       ifelse(citibike$age > 60, "60+",""))))))
+
+
+# color pallete for plot
+pastel_colors <- c("#E8232C", "#223570", "#00A0DC")
+
+p <- ggplot(citibike, aes(x = agegroup, y = tripduration, fill = gender)) + 
+  geom_bar(stat = "identity", alpha = 0.8) +
+  scale_fill_manual(values = pastel_colors, name = "Gender") +
+  labs(title = "Total Number of Ride Minutes by Age Group and Gender", x = "Age Group", y = "Trip Duration (minutes)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+p
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Stacked barplot of number of rides by agegroup split by gender
+data_summary <- citibike %>%
+  group_by(agegroup, gender) %>%
+  summarize(n = n())
+
+ggplot(data = data_summary, aes(x = agegroup, y = n, fill = gender)) + scale_fill_manual(values = pastel_colors, name = "Gender") +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  labs(title = "Number of Citi Bike Rides by Age Group and Gender", x = "Age Group", y = "Number of Rides", fill = "Gender") + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Total Number of Minutes Ridden by Gender
+f <- ggplot(citibike, aes(x=gender, y=tripduration, fill = gender)) + geom_bar(stat = "identity", alpha = 0.8) +
+  scale_fill_manual(values = pastel_colors, name = "Gender") +
+    labs(title = "Total Number of Minutes by Gender", x = "Gender", y = "Trip Duration (minutes)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+f
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------
+
+citibike$tripduration_female <- ifelse(citibike$gender == "female", citibike$tripduration,"")
+citibike$tripduration_male <- ifelse(citibike$gender == "male", citibike$tripduration,"")
+
+# Number of Rides by Gender
+data_summary <- citibike %>%
+  group_by(gender) %>%
+  summarize(n = n())
+
+ggplot(data = data_summary, aes(x = gender, y = n, fill = gender)) +
+  geom_bar(stat = "identity", alpha = 0.8) + scale_fill_manual(values = pastel_colors, name = "Gender") +
+  labs(title = "Number of Citi Bike Rides by Gender", x = "Gender", y = "Number of Rides") + theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.title = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+
+# Doughnut of Total # of Rides of Age Group
+data_summary <- citibike %>%
+  group_by(agegroup) %>%
+  summarize(n = n()) %>%
+  mutate(percent = n / sum(n))
+
+# a palette of Citi Bike colors 
+palette2 <- c("#E8232C", "#223570", "#00A0DC", "#F17D82", "#8892B2", "#8CD4EF", "#EFE58C")
+
+
+library(ggforce)
+
+ggplot(data = data_summary, aes(fill = agegroup, x = 1, y = percent, color = agegroup)) +
+  geom_bar(stat = "identity", alpha = 0.2) +
+  labs(title = "Number of Citi Bike Rides by Age Group") + theme_minimal() +
+  geom_text(aes(label = paste0(round(percent * 100), "%")), 
+            position = position_stack(vjust = 0.5), size = 4, 
+            hjust = ifelse(data_summary$percent > 0.5, 1, 0),
+            alpha = 0) +
+  scale_fill_manual(values = palette2) +
+  scale_color_manual(values = palette2) +
+  coord_polar(theta = "y") +
+  theme_void() +
+  theme(legend.position = "bottom", legend.title = element_blank(), legend.text = element_text(size = 12))
+
+```
+
+```{r}
+# Female
+citibike$date <- as.POSIXct(citibike$date)
+
+citibike_female <- subset(citibike, gender == "female")
+
+rides_by_yearf <- aggregate(citibike_female$tripduration, by = list(format(citibike_female$date, "%Y")), FUN = length)
+
+ggplot(data = rides_by_yearf, aes(x = Group.1, y = x)) + 
+  geom_bar(stat = "identity", fill = "#E8232C") + 
+  labs(title = "Number of Female Rides by Year", x = "Year", y = "Number of Rides")
+
+# Male
+citibike_male <- subset(citibike, gender == "male")
+
+rides_by_yearm <- aggregate(citibike_male$tripduration, by = list(format(citibike_male$date, "%Y")), FUN = length)
+
+barplot <- ggplot(data = rides_by_yearm, aes(x = Group.1, y = x)) + 
+  geom_bar(stat = "identity", fill = "#00A0DC") + 
+  labs(title = "Number of Male Rides by Year", x = "Year", y = "Number of Rides")
+
+
+print(combined_plot)
+
+
+# Growth rate of male rides
+(2004-715)/715
+
+# Growth rate of female rides
+(628-256)/256
+
+# Average # of minutes by gender
+sum(citibike_female$tripduration)/2137
+sum(citibike_male$tripduration)/6635
+
+# According to the "Cycling in the City" reports published by the New York City Department of Transportation (NYC DOT), the total mileage of bike lanes, routes, and paths in New York City has increased steadily over the years. Here are the figures for the end of each year from 2013 to 2017:
+# 
+# End of 2013: 835 miles
+# End of 2014: 961 miles
+# End of 2015: 1,017 miles
+# End of 2016: 1,133 miles
+# End of 2017: 1,198 miles
+# As you can see, the number of bike lanes in NYC has increased by more than 40% from 2013 to 2017.
+
+```
+
+
+```{r}
+# Heatmap and scatterplot on usage
+# Heatmap
+citibike <- read.csv("citibike.csv")
+
+citibike$starttime <- as.POSIXct(citibike$starttime, format = "%Y-%m-%d %H:%M:%S")
+
+citibike$hour <- as.numeric(format(citibike$starttime, "%H"))
+citibike$dayofweek <- weekdays(citibike$starttime)
+
+usage <- citibike %>%
+  group_by(hour, dayofweek) %>%
+  summarise(n = n())
+
+usage_wide <- dcast(usage, hour ~ dayofweek, value.var = "n")
+
+ggplot(data = usage, aes(x = hour, y = dayofweek)) +
+  geom_tile(aes(fill = n), colour = "white") +
+  scale_fill_gradient(low = "white", high = "#E8232C") +
+  labs(title = "Citi Bike Usage Heatmap",
+       x = NULL,
+       y = "Day of the Week",
+       fill = "Number of Rides") +
+  scale_x_continuous(breaks = seq(0, 23, by = 1),
+                     expand = c(0, 0),
+                     name = "Hour of the Day (24-hour clock)") +
+  theme_minimal()
+
+# Scatterplot
+start_times <- as.POSIXct(citibike$starttime, format = "%Y-%m-%d %H:%M:%S", tz = "America/New_York")
+start_times_df <- data.frame(hour = as.numeric(format(start_times, "%H")), 
+                             day_of_week = weekdays(start_times),
+                             rides = rep(1, length(start_times)))
+
+
+start_times_df$weekday <- ifelse(start_times_df$day_of_week %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), "Weekday", "Weekend")
+
+
+hourly_rides <- aggregate(rides ~ hour + weekday, data = start_times_df, sum)
+
+
+ggplot(hourly_rides, aes(x = hour, y = rides, color = weekday)) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = seq(0, 23, by = 1),
+                     expand = c(0, 0),
+                     name = "Hour of the Day (24-hour clock)") +
+  labs(title = "Citi Bike Start Times by Hour and Weekday/Weekend",
+       x = NULL,
+       y = "Number of Rides",
+       color = "Day of the Week") +
+  theme_minimal()
+
+
+
+```
+
+
